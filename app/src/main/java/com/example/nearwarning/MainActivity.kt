@@ -1,26 +1,26 @@
 package com.example.nearwarning
 
 import android.Manifest
-import android.content.Context
-import android.content.Intent
-import android.content.SyncRequest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.location.Address
+import android.location.Geocoder
 import android.location.Location
 import android.os.Build
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.os.Looper
 import android.util.Log
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 import com.google.android.gms.location.*
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.GoogleMap
-import com.google.android.gms.maps.OnMapReadyCallback
-import com.google.android.gms.maps.SupportMapFragment
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.MarkerOptions
-import kotlinx.android.synthetic.main.activity_main.*
+import com.google.android.gms.maps.*
+import com.google.android.gms.maps.model.*
+import java.io.IOException
+import java.util.*
 
 class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -30,22 +30,27 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         Manifest.permission.ACCESS_FINE_LOCATION
     )
     private val permissionOK = 100
-    private var permissionCheck = false
-    private var isLocationUpdateStart = false
 
-    private var location : Location? = null
     private lateinit var locationRequest: LocationRequest
     private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private lateinit var locationCallback: LocationCallback
+
+    private var location: Location? = null
+    private var currentMarker : Marker? = null
+    private var currentLocation : Location? = null
+    private var currentLatLng : LatLng? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        locationRequest =
+            LocationRequest().setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY).setInterval(3000)
+                .setFastestInterval(1500)
+
+        val locationSettingsRequest = LocationSettingsRequest.Builder()
+        locationSettingsRequest.addLocationRequest(locationRequest)
+
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        locationRequest = LocationRequest()
-        locationCallback = LocationCallback()
-        startLocationUpdates()
 
         if (Build.VERSION.SDK_INT >= 23) {
             checkPermission()
@@ -61,7 +66,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         val hasFineLocation: Int = ContextCompat.checkSelfPermission(this, permissions[1])
 
         if (hasCoarseLocation == PackageManager.PERMISSION_GRANTED && hasFineLocation == PackageManager.PERMISSION_GRANTED)
-            permissionCheck = true
+            startLocationUpdate()
         else {
             if (ActivityCompat.shouldShowRequestPermissionRationale(this, permissions[0])) {
                 Toast.makeText(this@MainActivity, "지도를 사용하기 위해서는 위치권한이 필요합니다.", Toast.LENGTH_LONG)
@@ -89,7 +94,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             }
 
             if (check) {
-                permissionCheck = true
+                startLocationUpdate()
             } else {
                 if (ActivityCompat.shouldShowRequestPermissionRationale(
                         this,
@@ -114,67 +119,95 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     override fun onMapReady(p0: GoogleMap?) {
         googleMap = p0
 
-        Log.e("permissions" , permissionCheck.toString())
-        if (permissionCheck)
-            getLocationUpdates(googleMap)
+        setTargetLocation()
     }
 
-    private fun getLocationUpdates(googleMap: GoogleMap?) {
-        Log.e("A", "A")
+    private fun getAddress(latLng: LatLng) : String{
+        val geoCoder = Geocoder(this, Locale.getDefault())
+        val list : List<Address>
 
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        locationRequest = LocationRequest()
-        locationRequest.interval = 5000
-        locationRequest.fastestInterval = 5000
-        locationRequest.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
-        locationCallback = object : LocationCallback() {
-            override fun onLocationResult(p0: LocationResult?) {
-                Log.e("check : " , p0.toString())
-                p0 ?: return
+        try {
+            list = geoCoder.getFromLocation(
+                latLng.latitude,
+                latLng.longitude,
+                1
+            )
+        }catch (e : IOException){
+            return "지오코더 서비스 사용불가"
+        }catch (e : IllegalAccessException){
+            return "잘못된 GPS 좌표"
+        }
 
-                if (p0.locations.isNotEmpty()) {
-                    location = p0.lastLocation
-                    Log.e("location : ", location!!.latitude.toString() +  location!!.longitude)
-                    val currentLocation  = LatLng(location!!.latitude, location!!.longitude)
-                    val markerOptions = MarkerOptions()
-                    markerOptions.position(currentLocation).title("서울").snippet("수도")
+        return if(list == null || list.isEmpty()){
+            "주소 미발견"
+        }else{
+            val address = list[0]
+            address.getAddressLine(0).toString()
+        }
+    }
 
-                    googleMap!!.addMarker(markerOptions)
-                    googleMap.moveCamera(CameraUpdateFactory.newLatLng(currentLocation))
-                    googleMap.animateCamera(CameraUpdateFactory.zoomTo(20f))
-                }
+    private fun setTargetLocation(){
+        val latLng  = LatLng(37.56, 126.97)
+
+        val circleOptions = CircleOptions()
+        circleOptions.center(latLng).radius(100.0).fillColor(Color.argb(51,0,0,255)).strokeColor(Color.argb(51,0,0,255))
+        googleMap!!.addCircle(circleOptions)
+
+        val markerOptions = MarkerOptions()
+        markerOptions.position(latLng).title("서울").snippet("수도")
+        googleMap!!.addMarker(markerOptions)
+
+
+    }
+
+    private fun locationCallback() = object : LocationCallback() {
+        override fun onLocationResult(p0: LocationResult?) {
+            val list : List<Location> = p0!!.locations
+
+            if(list.isNotEmpty()){
+                location = list[list.size-1]
+                currentLatLng = LatLng(location!!.latitude, location!!.longitude)
+                currentLocation = location
+                Log.e("location : ", currentLatLng.toString())
+                setCurrentLocation(currentLocation)
             }
         }
     }
 
-    private fun startLocationUpdates() {
-        fusedLocationClient.requestLocationUpdates(
-            locationRequest,
-            locationCallback,
-            null
-        )
-        Log.e("B","B")
-        isLocationUpdateStart = true
+    private fun setCurrentLocation(location: Location?){
+        if (currentMarker != null)
+            currentMarker!!.remove()
+
+        val mCurrentLatLng = LatLng(location!!.latitude, location!!.longitude)
+        val options = MarkerOptions().position(mCurrentLatLng).icon(BitmapDescriptorFactory.fromBitmap(getCurrentMarkerIcon()))
+
+        currentMarker = googleMap!!.addMarker(options)
+
+        val cameraUpdate : CameraUpdate = CameraUpdateFactory.newLatLngZoom(mCurrentLatLng, 15f)
+        googleMap!!.moveCamera(cameraUpdate)
     }
 
-    private fun stopLocationUpdate() {
-        fusedLocationClient.removeLocationUpdates(locationCallback)
-        isLocationUpdateStart = false
+    private fun getCurrentMarkerIcon() : Bitmap{
+
+        val bitmapDrawable = resources.getDrawable(R.drawable.ic_adjust_red_24dp, null)
+
+        var bitmap : Bitmap = bitmapDrawable.toBitmap()
+        bitmap = Bitmap.createScaledBitmap(bitmap, 50, 50, false)
+
+        return bitmap
+    }
+
+    private fun startLocationUpdate(){
+        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback(), Looper.myLooper())
     }
 
     override fun onPause() {
-        stopLocationUpdate()
-        Log.e("PauseStartcheck : ", isLocationUpdateStart.toString())
+        fusedLocationClient.removeLocationUpdates(locationCallback())
         super.onPause()
     }
 
     override fun onResume() {
-
-        Log.e("Startcheck : ", isLocationUpdateStart.toString())
-        if (!isLocationUpdateStart)
-            startLocationUpdates()
-        Log.e("Startcheck : ", isLocationUpdateStart.toString())
-        isLocationUpdateStart = true
+        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback(), null)
         super.onResume()
     }
 }
