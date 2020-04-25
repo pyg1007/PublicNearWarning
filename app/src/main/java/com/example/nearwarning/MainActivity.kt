@@ -34,6 +34,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var locationRequest: LocationRequest
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
+    private var targetLocation : Location? = null
     private var location: Location? = null
     private var currentMarker : Marker? = null
     private var currentLocation : Location? = null
@@ -147,14 +148,18 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun setTargetLocation(){
-        val latLng  = LatLng(37.56, 126.97)
+        targetLocation = Location("Target")
+        targetLocation!!.latitude = 37.56
+        targetLocation!!.longitude = 126.97
+
+        val targetLatLng = LatLng(targetLocation!!.latitude, targetLocation!!.longitude)
 
         val circleOptions = CircleOptions()
-        circleOptions.center(latLng).radius(100.0).fillColor(Color.argb(51,0,0,255)).strokeColor(Color.argb(51,0,0,255))
+        circleOptions.center(targetLatLng).radius(100.0).fillColor(Color.argb(51,0,0,255)).strokeColor(Color.argb(51,0,0,255))
         googleMap!!.addCircle(circleOptions)
 
         val markerOptions = MarkerOptions()
-        markerOptions.position(latLng).title("서울").snippet("수도")
+        markerOptions.position(targetLatLng).title("서울").snippet("수도")
         googleMap!!.addMarker(markerOptions)
 
 
@@ -168,7 +173,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                 location = list[list.size-1]
                 currentLatLng = LatLng(location!!.latitude, location!!.longitude)
                 currentLocation = location
-                Log.e("location : ", currentLatLng.toString())
+                Log.e("location : ", currentLocation!!.distanceTo(targetLocation).toString())
                 setCurrentLocation(currentLocation)
             }
         }
