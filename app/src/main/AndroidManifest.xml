@@ -16,6 +16,10 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true"
         tools:targetApi="m">
+        <receiver
+            android:name=".Warning"
+            android:enabled="true"
+            android:exported="true"/>
 
         <uses-library
             android:name="org.apache.http.legacy"

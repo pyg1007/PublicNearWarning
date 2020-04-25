@@ -1,6 +1,8 @@
 package com.example.nearwarning
 
 import android.Manifest
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -30,6 +32,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         Manifest.permission.ACCESS_FINE_LOCATION
     )
     private val permissionOK = 100
+    private var warning : Warning? = null
+    private var first : Boolean = false
 
     private lateinit var locationRequest: LocationRequest
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -149,8 +153,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun setTargetLocation(){
         targetLocation = Location("Target")
-        targetLocation!!.latitude = 37.56
-        targetLocation!!.longitude = 126.97
+        targetLocation!!.latitude = 35.21776
+        targetLocation!!.longitude = 128.68998
 
         val targetLatLng = LatLng(targetLocation!!.latitude, targetLocation!!.longitude)
 
@@ -159,10 +163,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         googleMap!!.addCircle(circleOptions)
 
         val markerOptions = MarkerOptions()
-        markerOptions.position(targetLatLng).title("서울").snippet("수도")
+        markerOptions.position(targetLatLng).title("창원").snippet("목적지")
         googleMap!!.addMarker(markerOptions)
-
-
     }
 
     private fun locationCallback() = object : LocationCallback() {
@@ -173,7 +175,18 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
                 location = list[list.size-1]
                 currentLatLng = LatLng(location!!.latitude, location!!.longitude)
                 currentLocation = location
-                Log.e("location : ", currentLocation!!.distanceTo(targetLocation).toString())
+                val distance = currentLocation!!.distanceTo(targetLocation)
+                if (distance <= 100) {
+                    val intent = Intent()
+                    intent.action = "Near"
+                    sendBroadcast(intent)
+                }else{
+                    val intent = Intent()
+                    intent.action = "Far"
+                    sendBroadcast(intent)
+                }
+                Log.e("위도경도 : ", currentLatLng.toString())
+
                 setCurrentLocation(currentLocation)
             }
         }
@@ -183,13 +196,16 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         if (currentMarker != null)
             currentMarker!!.remove()
 
-        val mCurrentLatLng = LatLng(location!!.latitude, location!!.longitude)
+        val mCurrentLatLng = LatLng(location!!.latitude, location.longitude)
         val options = MarkerOptions().position(mCurrentLatLng).icon(BitmapDescriptorFactory.fromBitmap(getCurrentMarkerIcon()))
 
         currentMarker = googleMap!!.addMarker(options)
 
-        val cameraUpdate : CameraUpdate = CameraUpdateFactory.newLatLngZoom(mCurrentLatLng, 15f)
-        googleMap!!.moveCamera(cameraUpdate)
+        if (!first) {
+            val cameraUpdate: CameraUpdate = CameraUpdateFactory.newLatLngZoom(mCurrentLatLng, 15f)
+            googleMap!!.moveCamera(cameraUpdate)
+            first = true
+        }
     }
 
     private fun getCurrentMarkerIcon() : Bitmap{
@@ -208,11 +224,17 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
     override fun onPause() {
         fusedLocationClient.removeLocationUpdates(locationCallback())
+        unregisterReceiver(warning)
         super.onPause()
     }
 
     override fun onResume() {
         fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback(), null)
+
+        warning = Warning()
+        val intentFilter = IntentFilter("Near")
+        intentFilter.addAction("Far")
+        registerReceiver(warning, intentFilter)
         super.onResume()
     }
 }
