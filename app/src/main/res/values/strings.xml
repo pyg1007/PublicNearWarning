@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">NearWarning</string>
+
+    <string name="target">목적지</string>
 </resources>
